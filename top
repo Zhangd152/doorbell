@@ -1,0 +1,241 @@
+module doorbell(BTN0,BTN2,BTN7,clk,BEEP,DS,SC,LD);
+input BTN0,BTN2,BTN7;
+input clk;
+output BEEP;
+output [7:0] DS;
+output [7:0] SC;
+output [15:0] LD;
+/////////////////////////////////////////////////////////////////////////////////////
+wire click_0,click_2,click_7;
+reg clk_4hz=1'b1;
+reg [22:0]cntclk_4hz;
+reg [2:0]seg;
+reg [17:0]cnt_scan;
+reg clk_scan=1;
+reg [7:0]DS;
+reg [7:0]SC;
+reg [2:0]mode;
+reg [3:0]music;
+reg [15:0]cnt_beep=29'b0;
+reg lock_beep=1'b0;
+reg lock_led=1'b0;
+reg [28:0]cnt_lockb=29'b0;
+reg [28:0]cnt_lockl=29'b0;
+reg [4:0]pai=0;
+reg [3:0]note;
+reg [15:0]tune;
+reg BEEPOFF;
+reg [15:0]LD;
+reg [15:0]LED;
+////////////////////////////////////////////////////////////////////////////////////////////
+button_debounce b1(                                                   //按键消抖
+							.clk(clk),
+							.key(BTN0),
+							.key_pulse(click_0)
+							);
+button_debounce b2(	.clk(clk),
+							.key(BTN2),
+							.key_pulse(click_2)
+							);
+button_debounce b3(	.clk(clk),
+							.key(BTN7),
+							.key_pulse(click_7)
+							);
+/////////////////////////////////////////////////////////////////////////////////////////////
+always@(posedge clk)//4hz分频
+begin
+	if(cntclk_4hz==6250000)
+	begin
+		cntclk_4hz=0;
+		clk_4hz=~clk_4hz;
+	end
+	else
+		cntclk_4hz=cntclk_4hz+1;
+end
+//////////////////////////////////////////////////////////////////////////////////////////////
+always@(posedge clk)//时钟分频，扫描间隔10ms
+begin
+	if (cnt_scan == 18'd250000)
+	begin
+		cnt_scan <= 18'd0;
+		clk_scan <= ~clk_scan;
+	end
+	else 
+		cnt_scan <= cnt_scan + 18'b1;		
+end
+/////////////////////////////////////////////////////////////////////////////////////
+always@(posedge clk)//数码管扫描
+begin
+	if(clk_scan == 0)
+	begin
+		DS <= 8'b11111110;
+		seg <= mode;
+	end
+	else if(clk_scan == 1)
+	begin
+		DS <= 8'b11111101;
+		seg <= music;
+	end
+end
+///////////////////////////////////////////////////////////////////////////
+always@(posedge clk)//数码管数字显示
+begin	
+	case(seg)
+		'd1: SC <= 8'b01100000;
+		'd2: SC <= 8'b11011010;
+		'd3: SC <= 8'b11110010;
+		'd4: SC <= 8'b01100110;
+		'd5: SC <= 8'b10110110;
+	endcase
+end
+////////////////////////////////////////////////////////////////////////////////////
+always@(posedge click_0)//mode切换
+begin
+	if(click_0)
+	begin
+		if(mode == 3'd4)
+			mode <= 3'd1;
+		else
+			mode <= mode + 3'd1;
+	end
+end
+/////////////////////////////////////////////////////////////////////////////////////////
+always@(posedge click_2)//music切换
+begin
+	if(click_2)
+	begin
+		if(music == 3'd5)
+			music <= 3'd1;
+		else
+			music <= music + 3'd1;
+	end
+end
+///////////////////////////////////////////////////////////////////////////////////////
+assign BEEP=lock_beep?BEEPOFF:1'b1;//beep开关
+always@(posedge clk)
+begin
+if(mode==1||mode==3)
+begin
+	if(click_7)
+		lock_beep<=1'b1;
+	else if(lock_beep)
+	begin
+		cnt_lockb=cnt_lockb+'b1;
+		if(cnt_lockb==400000000)
+		begin
+			cnt_lockb<=29'b0;
+			lock_beep<=1'b0;
+		end
+	end
+end
+end
+/////////////////////////////////////////////////////////////////////////////////////
+always@(posedge clk_4hz)//音符
+begin
+	case(note)
+		'd0:tune<='d50000;
+		'd1:tune<='d2226;//中音1
+		'd2:tune<='d7432;//中音2
+		'd3:tune<='d12081;//中音3
+		'd4:tune<='d14209;//中音4
+		'd5:tune<='d18112;//中音5
+		'd6:tune<='d21591;//中音6
+		'd7:tune<='d24691;//中音7
+		'd8:tune<='d26111;//高音1
+	endcase
+end
+/////////////////////////////////////////////////////////////////////////////////////
+always@(posedge clk)//播放
+begin
+	if(cnt_beep==50000)
+	begin
+		cnt_beep=tune;
+		BEEPOFF=~BEEPOFF;
+	end
+	else
+		cnt_beep=cnt_beep+1;
+end
+//////////////////////////////////////////////////////////////////////////////////////
+always@(posedge clk_4hz)//乐谱
+begin
+	if(pai==31||click_7)
+		pai=0;
+	else if(pai!=31)
+		pai=pai+1;
+		case(pai)//////////两只老虎/////小星星/////欢乐颂///祖国我们爱您///小红帽///////////////
+			0:case(music) 1:note<=1; 2:note<=1; 3:note<=3; 4:note<=3; 5:note<=1; endcase
+			1:case(music) 1:note<=0; 2:note<=0; 3:note<=0; 4:note<=4; 5:note<=2; endcase
+			2:case(music) 1:note<=2; 2:note<=1; 3:note<=3; 4:note<=5; 5:note<=3; endcase
+			3:case(music) 1:note<=0; 2:note<=0; 3:note<=0; 4:note<=6; 5:note<=4; endcase
+			4:case(music) 1:note<=3; 2:note<=5; 3:note<=4; 4:note<=5; 5:note<=5; endcase
+			5:case(music) 1:note<=0; 2:note<=0; 3:note<=0; 4:note<=5; 5:note<=5; endcase
+			6:case(music) 1:note<=1; 2:note<=5; 3:note<=5; 4:note<=5; 5:note<=3; endcase
+			7:case(music) 1:note<=0; 2:note<=0; 3:note<=0; 4:note<=0; 5:note<=1; endcase
+			8:case(music) 1:note<=1; 2:note<=6; 3:note<=5; 4:note<=3; 5:note<=8; endcase
+			9:case(music) 1:note<=0; 2:note<=0; 3:note<=0; 4:note<=4; 5:note<=8; endcase
+			10:case(music) 1:note<=2; 2:note<=6; 3:note<=4; 4:note<=5; 5:note<=6; endcase
+			11:case(music) 1:note<=0; 2:note<=0; 3:note<=0; 4:note<=6; 5:note<=4; endcase
+			12:case(music) 1:note<=3; 2:note<=5; 3:note<=3; 4:note<=5; 5:note<=5; endcase
+			13:case(music) 1:note<=0; 2:note<=5; 3:note<=0; 4:note<=5; 5:note<=5; endcase
+			14:case(music) 1:note<=1; 2:note<=5; 3:note<=2; 4:note<=5; 5:note<=3; endcase
+			15:case(music) 1:note<=0; 2:note<=0; 3:note<=0; 4:note<=0; 5:note<=0; endcase
+			16:case(music) 1:note<=3; 2:note<=4; 3:note<=1; 4:note<=3; 5:note<=1; endcase
+			17:case(music) 1:note<=0; 2:note<=0; 3:note<=0; 4:note<=4; 5:note<=2; endcase
+			18:case(music) 1:note<=4; 2:note<=4; 3:note<=1; 4:note<=5; 5:note<=3; endcase
+			19:case(music) 1:note<=0; 2:note<=0; 3:note<=0; 4:note<=8; 5:note<=4; endcase
+			20:case(music) 1:note<=5; 2:note<=3; 3:note<=2; 4:note<=7; 5:note<=5; endcase
+			21:case(music) 1:note<=5; 2:note<=0; 3:note<=0; 4:note<=7; 5:note<=3; endcase
+			22:case(music) 1:note<=5; 2:note<=3; 3:note<=3; 4:note<=6; 5:note<=2; endcase
+			23:case(music) 1:note<=0; 2:note<=0; 3:note<=0; 4:note<=6; 5:note<=1; endcase
+			24:case(music) 1:note<=3; 2:note<=2; 3:note<=3; 4:note<=5; 5:note<=2; endcase
+			25:case(music) 1:note<=0; 2:note<=0; 3:note<=3; 4:note<=5; 5:note<=2; endcase
+			26:case(music) 1:note<=4; 2:note<=2; 3:note<=0; 4:note<=5; 5:note<=3; endcase
+			27:case(music) 1:note<=0; 2:note<=0; 3:note<=2; 4:note<=5; 5:note<=3; endcase
+			28:case(music) 1:note<=5; 2:note<=1; 3:note<=0; 4:note<=0; 5:note<=2; endcase
+			29:case(music) 1:note<=5; 2:note<=1; 3:note<=2; 4:note<=0; 5:note<=2; endcase
+			30:case(music) 1:note<=5; 2:note<=1; 3:note<=2; 4:note<=0; 5:note<=5; endcase
+			31:case(music) 1:note<=0; 2:note<=0; 3:note<=0; 4:note<=0; 5:note<=0; endcase
+		endcase
+end
+///////////////////////////////////////////////////////////////////////////////////////
+always@(posedge clk)//led开关
+begin
+	if(lock_led)
+		LD<=LED;
+	else
+		LD<=16'b0;
+end
+always@(posedge clk)
+begin
+if(mode==2||mode==3)
+begin
+	if(click_7)
+		lock_led<=1'b1;
+	else if(lock_led)
+	begin
+		cnt_lockl=cnt_lockl+'b1;
+		if(cnt_lockl==400000000)
+		begin
+			cnt_lockl<=29'b0;
+			lock_led<=1'b0;
+		end
+	end
+end
+end
+////////////////////////////////////////////////////////////////////////////////////////
+always@(posedge clk)//led对应音符
+begin
+	case(note)
+		'd0:LED<=16'b0000000000000000;
+		'd1:LED<=16'b1100000000000000;
+		'd2:LED<=16'b0011000000000000;
+		'd3:LED<=16'b0000110000000000;
+		'd4:LED<=16'b0000001100000000;
+		'd5:LED<=16'b0000000011000000;
+		'd6:LED<=16'b0000000000110000;
+		'd7:LED<=16'b0000000000001100;
+		'd8:LED<=16'b0000000000000011;
+	endcase
+end
+///////////////////////////////////////////////////////////////////////////////////////////
+endmodule
